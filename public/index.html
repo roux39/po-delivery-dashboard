@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>발주 납기 현황판</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>발주 납기 현황판</h1>
+      <div class="sub" id="last-up">SAP 발주 파일을 아직 올리지 않았어요.</div>
+    </div>
+    <div class="who" id="who"></div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="dash" aria-selected="true">대시보드</button>
+    <button role="tab" data-tab="upload" aria-selected="false" class="editor-only">데이터 올리기</button>
+    <button role="tab" data-tab="receipts" aria-selected="false">입고 기록</button>
+    <button role="tab" data-tab="settings" aria-selected="false" class="editor-only">설정</button>
+  </nav>
+
+  <!-- 대시보드 -->
+  <section id="tab-dash" style="display:flex;flex-direction:column;gap:16px">
+    <div class="stats">
+      <button class="stat late" data-quick="late"><span class="k">지연</span><span class="v" id="s-late">0</span><span class="h">납기가 지났는데 잔량이 남은 줄</span></button>
+      <button class="stat" data-quick="week"><span class="k">이번 주 입고예정</span><span class="v" id="s-week">0</span><span class="h">오늘부터 7일 안에 납기인 줄</span></button>
+      <button class="stat" data-quick="open"><span class="k">잔량 남은 줄</span><span class="v" id="s-open">0</span><span class="h">입고완료가 아닌 줄 전체</span></button>
+    </div>
+    <div class="filters">
+      <input id="q" type="search" placeholder="PO번호, 품번, 품명, 공급사로 검색" aria-label="검색">
+      <select id="f-vendor" aria-label="공급사"><option value="">공급사 전체</option></select>
+      <select id="f-status" aria-label="상태">
+        <option value="">상태 전체</option><option>지연</option><option>부분입고</option><option>입고대기</option><option>입고완료</option><option>Closed</option>
+      </select>
+      <label><input type="checkbox" id="f-closed"> Closed 포함</label>
+      <button class="btn" id="reset">필터 초기화</button>
+      <span class="count" id="count"></span>
+    </div>
+    <div class="tablebox">
+      <table class="main-table">
+        <thead><tr>
+          <th class="sortable" data-sort="po">PO number</th>
+          <th class="sortable" data-sort="vendor">Vendor name</th>
+          <th class="sortable" data-sort="item">Item No.</th>
+          <th class="sortable r" data-sort="qty">현재 발주 수량</th>
+          <th class="sortable r" data-sort="open_qty">현재 잔량</th>
+          <th class="sortable" data-sort="delivery">기존 납기일</th>
+          <th class="sortable" data-sort="due">납기예정일</th>
+          <th class="sortable" data-sort="status">상태</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="legend">
+      <span><b>굵은 날짜</b> = 납기가 바뀐 줄</span>
+      <span><span class="flag new" style="margin:0">신규</span> = 최근 7일 안에 처음 들어온 발주</span>
+      <span><span class="flag" style="margin:0">SAP 반영 대기</span> = 입고를 등록했지만 SAP 잔량에 아직 안 빠졌을 수 있음</span>
+      <span>제목을 누르면 정렬, 줄을 누르면 상세 정보</span>
+    </div>
+  </section>
+
+  <!-- 데이터 올리기 -->
+  <section id="tab-upload" hidden>
+    <div class="upgrid">
+      <div class="card">
+        <h2>① SAP 발주 파일 올리기</h2>
+        <div class="filedrop" data-for="po-file">
+          <label class="btn primary" for="po-file">엑셀 파일 고르기</label>
+          <span class="small">SAP에서 내려받은 발주 목록 엑셀(.xlsx)을 고르거나 여기로 끌어다 놓으세요.</span>
+          <input type="file" id="po-file" accept=".xlsx,.xlsm" hidden>
+        </div>
+        <p>또는 발주 목록을 <b>제목줄까지</b> 전체 선택(Ctrl+A) → 복사(Ctrl+C) → 아래 칸에 붙여넣기(Ctrl+V) 하세요.</p>
+        <textarea id="po-paste" spellcheck="false" placeholder="여기에 붙여넣기"></textarea>
+        <label class="check"><input type="checkbox" id="po-full" checked>
+          <span>SAP 발주 목록 <b>전체</b>를 붙여넣었어요.<br><span class="small">체크하면 이번 목록에 없는 기존 발주 줄은 Closed로 처리돼요. 일부만 붙여넣었다면 체크를 풀어 주세요.</span></span></label>
+        <div class="btnrow">
+          <button class="btn primary" id="po-check">확인하기</button>
+          <button class="btn" id="po-clear">지우기</button>
+        </div>
+        <div class="result" id="po-result"></div>
+        <ul class="rules">
+          <li>삭제: Purchase Type Indirect·공란 / Row Status C·공란 / Price Currency KRW 아님·공란</li>
+          <li>중복: PO number·Posting Date·Delivery Date·Item No.·Vendor Name이 모두 같으면 가장 최근(아래쪽) 줄만 남김</li>
+          <li>입력해 둔 납기예정일과 기존 납기일은 그대로 유지</li>
+          <li>단가 관련 열은 저장하지 않아요</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>② 거래명세서 입고 올리기</h2>
+        <div class="filedrop" data-for="rc-file">
+          <label class="btn primary" for="rc-file">엑셀·PDF 파일 고르기</label>
+          <span class="small">공급사 거래명세서 엑셀(.xlsx)·PDF(스캔본 포함)를 고르거나 끌어다 놓으세요. 여러 개를 한 번에 올려도 돼요.</span>
+          <input type="file" id="rc-file" accept=".xlsx,.xlsm,.pdf" multiple hidden>
+        </div>
+        <p>또는 receipt_raw에 붙여넣던 것처럼 아래 칸에 붙여넣으세요. 제목줄·합계줄·빈 줄은 알아서 건너뛰고, "10/16 착"에서 날짜를 읽어요.</p>
+        <textarea id="rc-paste" spellcheck="false" placeholder="여기에 붙여넣기"></textarea>
+        <div class="btnrow">
+          <button class="btn primary" id="rc-check">확인하기</button>
+          <button class="btn" id="rc-clear">지우기</button>
+        </div>
+        <div class="result" id="rc-result"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 입고 기록 -->
+  <section id="tab-receipts" hidden style="flex-direction:column;gap:12px">
+    <div class="filters">
+      <input id="rq" type="search" placeholder="PO번호, 품번, 공급사로 검색" aria-label="입고 검색">
+      <span class="count" id="rcount"></span>
+    </div>
+    <div class="tablebox">
+      <table style="min-width:820px">
+        <thead><tr><th>입고일</th><th>PO number</th><th>Vendor name</th><th>Item No.</th><th class="r">수량</th><th>메모</th><th>연결</th><th>SAP</th><th>등록</th><th class="editor-only"></th></tr></thead>
+        <tbody id="rrows"></tbody>
+      </table>
+    </div>
+    <p class="small">입고 기록은 연결된 PO가 Closed 된 뒤 6개월이 지나면 자동으로 지워져요. 어느 발주에도 연결되지 않은 입고는 입고일로부터 6개월 뒤 지워져요.</p>
+  </section>
+
+  <!-- 설정 -->
+  <section id="tab-settings" hidden>
+    <div class="upgrid">
+      <div class="card">
+        <h2>구매팀 비밀번호 바꾸기</h2>
+        <p>바꾸면 다른 PC의 구매팀 로그인은 모두 풀려요.</p>
+        <form id="pw-form" class="btnrow" style="flex-direction:column;align-items:stretch">
+          <input type="password" id="pw-cur" placeholder="지금 비밀번호" autocomplete="current-password" class="eta-input" style="padding:7px 10px">
+          <input type="password" id="pw-new" placeholder="새 비밀번호 (4자 이상)" autocomplete="new-password" class="eta-input" style="padding:7px 10px">
+          <button class="btn primary" type="submit">바꾸기</button>
+          <span class="msg" id="pw-msg"></span>
+        </form>
+      </div>
+      <div class="card">
+        <h2>올린 기록</h2>
+        <div class="tablebox free"><table><thead><tr><th>시간</th><th>종류</th><th>올린 사람</th><th>결과</th></tr></thead><tbody id="uprows"></tbody></table></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<aside class="drawer" id="drawer" hidden aria-label="상세 정보">
+  <div class="drawer-head">
+    <div><h2 id="d-title"></h2><div class="meta" id="d-meta"></div></div>
+    <button class="btn" id="d-close">닫기</button>
+  </div>
+  <div class="drawer-body" id="d-body"></div>
+</aside>
+
+<div class="modal-bg" id="login" hidden>
+  <form class="modal" id="login-form">
+    <h2 id="login-title">구매팀 로그인</h2>
+    <p class="small" id="login-help" style="margin:0">로그인하면 납기예정일 입력과 데이터 올리기를 할 수 있어요.</p>
+    <label>이름 <input id="lg-name" autocomplete="name" placeholder="예: 김구매"></label>
+    <label>비밀번호 <input id="lg-pw" type="password" autocomplete="current-password"></label>
+    <div class="msg" id="lg-msg"></div>
+    <div class="btnrow" style="justify-content:flex-end">
+      <button class="btn" type="button" id="lg-cancel">취소</button>
+      <button class="btn primary" type="submit" id="lg-submit">로그인</button>
+    </div>
+  </form>
+</div>
+
+<script src="/rules.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

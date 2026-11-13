@@ -1,0 +1,15 @@
+{
+  "name": "po-delivery-dashboard",
+  "version": "1.0.0",
+  "description": "구매 실무용 발주 납기·입고 현황판 (사내망, 설치 없는 Node.js)",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "demo": "node demo/make-demo.js && node server.js --data demo-data --port 3100"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
